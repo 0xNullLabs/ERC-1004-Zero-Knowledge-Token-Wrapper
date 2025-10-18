@@ -1,0 +1,38 @@
+```uml
+@startuml
+actor Alice
+actor Bob
+participant "ZWToken Contract" as ZW
+participant "Underlying Token" as U
+participant "Frontend / Wallet" as FE
+
+Alice -> U : approve(ZWToken Contract, amount)
+Alice -> ZW : deposit(amount)
+ZW -> U : transferFrom(Alice, ZWToken Contrac, amount)
+ZW -> Alice : mint ZWToken(amount)
+ZW -> ZW : emit Deposited
+
+Alice -> ZW : transfer(amount) to provable burn address
+ZW -> ZW : update commitment
+ZW -> ZW : emit CommitmentUpdated(commitment, to, amount)
+
+FE -> ZW : fetch commit data / listen CommitmentUpdated
+FE -> FE : rebuild commitment state
+FE -> FE : generate proof for remint
+
+Bob -> ZW : remint(proof, commitment, nullifier, to, amount)
+ZW -> ZW : verify ZK proof
+ZW -> ZW : check nullifier
+ZW -> ZW : mark nullifier used
+ZW -> ZW : mint ZWToken(to, amount)
+ZW -> ZW : emit CommitmentUpdated(commitment, to, amount)
+ZW -> Bob : receive ZWToken
+ZW -> ZW : emit Reminted
+
+Bob -> ZW : withdraw(amount)
+ZW -> ZW : burn ZWToken
+ZW -> U : transfer(to=Bob, amount)
+ZW -> Bob : receive underlying
+ZW -> ZW : emit Withdrawn
+@enduml
+```
