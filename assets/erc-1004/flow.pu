@@ -1,37 +1,63 @@
 ```uml
 @startuml
 actor Alice1
-actor Alice2
+actor "Alice2/Relayer" as Alice2
+actor Bob
 participant "ZWToken Contract" as ZW
 participant "Underlying Token" as U
 
+== Alice1 Wraps Token into ZWToken ==
 Alice1 -> U : underlying.approve(ZWToken Contract, amount)
+Alice1 <-- U
 Alice1 -> ZW : ZWToken.deposit(amount)
-ZW -> U : underlying.transferFrom(Alice1, ZWToken Contrac, amount)
-ZW -> Alice1 : mint ZWToken(amount)
-ZW -> ZW : emit Deposited
+ZW -> U : underlying.transferFrom(Alice1, ZWToken Contract, amount)
+ZW <-- U
+ZW -> ZW : mint ZWToken(amount) to Alice1
+ZW -> ZW : emit Deposited(Alice1, amount)
+Alice1 <-- ZW
 
-Alice1 -> ZW : ZWToken.transfer(amount) to provable burn address
-ZW -> ZW : update commitment
-ZW -> ZW : Optional: emit CommitmentUpdated(commitment, to, amount)
+== Alice1 Burns ZWToken ==
+Alice1 -> Alice1: Generate provable burn address (e.g. Use poseidon hash)
+Alice1 -> ZW : ZWToken.transfer(provable burn address, amount)
+alt Contract-maintained commitment
+    ZW -> ZW : update commitment
+    ZW -> ZW : emit CommitmentUpdated(commitment, to, amount)
+end
+Alice1 <-- ZW
 
-Alice2 -> ZW : fetch commit data / listen CommitmentUpdated
-Alice2 -> Alice2 : rebuild commitment state
-Alice2 -> Alice2 : generate proof for remint
+== Alice1 Generates Proof of Provable Burn Address for Reminting ==
+alt Contract-maintained commitment
+    Alice1 -> ZW : fetch commit data / event CommitmentUpdated
+    Alice1 <-- ZW
+else Protocol-level MPT commitment
+    Alice1 -> ZW : eth_getProof
+    Alice1 <-- ZW
+end
+Alice1 -> Alice1 : rebuild commitment
+Alice1 -> Alice1 : generate proof for reminting
 
-Alice2 -> ZW : ZWToken.remint(proof, commitment, nullifier, to, amount)
-ZW -> ZW : verify ZK proof
+== Alice2/Relayer Remints ZWToken to Bob==
+Alice1 -> Alice2 : provide proof for reminting
+Alice1 <-- Alice2
+Alice2 -> ZW : ZWToken.remint(proof, commitment, nullifier, to=Bob, amount)
 ZW -> ZW : check nullifier
 ZW -> ZW : mark nullifier used
-ZW -> ZW : mint ZWToken(to, amount)
-ZW -> ZW : emit CommitmentUpdated(commitment, to, amount)
-ZW -> Alice2 : receive ZWToken
-ZW -> ZW : emit Reminted
+ZW -> ZW : verify ZK proof
+ZW -> ZW : mint ZWToken(to=Bob, amount)
+alt Contract-maintained commitment\nBob might be a provable burn address
+    ZW -> ZW : update commitment
+    ZW -> ZW : emit CommitmentUpdated(commitment, to, amount)
+end
+ZW -> ZW : mint ZWToken(amount) to Bob
+ZW -> ZW : emit Reminted(to=Bob, amount);
+Alice2 <-- ZW
 
-Alice2 -> ZW : ZWToken.withdraw(amount)
+== Bob Unwraps ZWToken ==
+Bob -> ZW : ZWToken.withdraw(amount)
 ZW -> ZW : burn ZWToken
-ZW -> U : underlying.transfer(to=Alice2, amount)
-ZW -> Alice2 : receive underlying
-ZW -> ZW : emit Withdrawn
+ZW -> U : underlying.transfer(to=Bob, amount)
+ZW <-- U
+ZW -> ZW : emit Withdrawn(to=Bob, amount)
+Bob <-- ZW
 @enduml
 ```
